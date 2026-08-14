@@ -108,13 +108,18 @@ uv run python -m ksa stats       # что в базе
 
 ## Публикация на GitHub Pages
 
-```bash
-uv run python scripts/export_static.py   # собрать docs/
-git add -A && git commit -m "обновил данные" && git push
-```
+Собирает и публикует GitHub Actions на каждый push в `main`
+(`.github/workflows/pages.yml`): ставит зависимости, гоняет тесты,
+наполняет базу из `data/locations.json` и пишет `docs/`. Поэтому
+выгрузка в репозитории не хранится — достаточно обычного `git push`.
 
-В настройках репозитория: `Settings` → `Pages` → Source **Deploy from
-a branch**, ветка **main**, папка **/docs**.
+В настройках репозитория: `Settings` → `Pages` → Source **GitHub Actions**.
+
+Собрать локально, чтобы посмотреть глазами:
+
+```bash
+uv run python scripts/export_static.py && python3 -m http.server -d docs
+```
 
 Это снимок, а не живой сайт: GitHub Pages не запускает Python, поэтому
 весь справочник лежит в `docs/data/listings.json` и фильтруется в браузере.
@@ -131,7 +136,7 @@ src/ksa/
   api/main.py          HTTP-API и раздача сайта
   pipeline.py          связка: разбор → склейка → публикация
 web/                   фронтенд без сборки: index.html, styles.css, app.js
-docs/                  статическая выгрузка для GitHub Pages (пересобирается)
+docs/                  статическая выгрузка (собирается CI, в гит не идёт)
 migrations/001_init.sql  схема
 scripts/               импорт локаций, сборка статики
 upload_r2.sh           заливка фотографий на Cloudflare R2

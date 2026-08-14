@@ -1,0 +1,69 @@
+# Сборка и публикация справочника на GitHub Pages.
+#
+# Выгрузка не хранится в репозитории — она собирается здесь заново на каждый
+# push: база строится из data/locations.json, потом из неё пишется docs/.
+# Так исключён случай «поправил данные, забыл пересобрать».
+#
+# Когда пойдёт сбор из телеграма, база перестанет быть воспроизводимой из
+# репозитория (сырых сообщений там нет), и этот шаг придётся заменить —
+# либо класть готовую выгрузку в репозиторий, либо отдавать базу извне.
+
+name: Публикация справочника
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:      # кнопка «запустить вручную» на вкладке Actions
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Публикуем по одной сборке за раз; лишние промежуточные — отменяем.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Ставим uv официальным скриптом, а не готовым действием: так сборка
+      # не сломается от смены версии стороннего действия.
+      - name: Установить uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Установить зависимости
+        run: uv sync --frozen
+
+      # Тесты гоняем до публикации: сломанный дедуп не должен доехать до людей.
+      - name: Тесты
+        run: uv run pytest -q
+
+      - name: Наполнить базу локациями
+        run: uv run python scripts/import_locations.py
+
+      - name: Собрать статическую версию
+        run: uv run python scripts/export_static.py
+        env:
+          # Картинки лежат на Cloudflare R2, в выгрузку они не копируются.
+          KSA_MEDIA_BASE_URL: https://pub-e892f476b179472591f30d3106657060.r2.dev
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

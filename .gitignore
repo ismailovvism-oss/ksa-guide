@@ -5,8 +5,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# Папка docs/ намеренно НЕ игнорируется: из неё GitHub Pages раздаёт
-# статическую версию справочника. Пересобирается scripts/export_static.py.
+# Статическую версию собирает GitHub Actions на каждый push
+# (.github/workflows/pages.yml), поэтому в репозитории её держать не нужно.
+docs/
 
 # База и скачанные медиа собираются заново из каналов.
 data/ksa.db
