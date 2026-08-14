@@ -1,0 +1,15 @@
+.env
+.secrets/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Папка docs/ намеренно НЕ игнорируется: из неё GitHub Pages раздаёт
+# статическую версию справочника. Пересобирается scripts/export_static.py.
+
+# База и скачанные медиа собираются заново из каналов.
+data/ksa.db
+data/ksa.db-wal
+data/ksa.db-shm
+data/media/
