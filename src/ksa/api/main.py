@@ -43,13 +43,14 @@ LISTING_FIELDS = """
     l.id, l.category, l.subcategory, l.city, l.district, l.title, l.summary,
     l.price_amount, l.price_currency, l.price_period, l.rooms, l.area_sqm,
     l.contacts, l.photo, l.map_url, l.source_url, l.last_seen_at,
-    l.first_seen_at, l.repost_count
+    l.first_seen_at, l.repost_count, l.details
 """
 
 
 def serialize(row: sqlite3.Row) -> dict[str, Any]:
     item = {key: row[key] for key in row.keys()}
     item["contacts"] = loads(item.get("contacts"), []) or []
+    item["details"] = loads(item.get("details"), {}) or {}
     item["categoryTitle"] = categories.title(item["category"])
     item["promoted"] = bool(item.pop("promotion_rank", 0))
     if item.get("photo"):

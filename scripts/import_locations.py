@@ -65,6 +65,30 @@ def summary_of(raw: dict, shared_post: bool) -> str | None:
     return "\n".join(kept).strip()[:1500] or None
 
 
+KNOWN_CITIES = {
+    "Мекка": r"мекк", "Медина": r"медин", "Джидда": r"джидд",
+    "Эр-Рияд": r"эр-рияд|эррияд", "Даммам": r"даммам", "Таиф": r"таиф",
+    "Янбу": r"янбу", "Абха": r"абха", "Аль-Ула": r"аль-ул",
+}
+
+
+def city_of(raw: dict) -> str | None:
+    """Город записи.
+
+    Основной источник — адрес из Google Maps, он разобран при выгрузке.
+    Если там не разобралось, пробуем заголовок самой записи: в нём город
+    часто назван прямо («Мечеть на воде в Джидде»). Текст поста для этого
+    не годится — в подборке он перечисляет города чужих мест.
+    """
+    city = (raw.get("city") or "").strip()
+    if city:
+        return city
+
+    title = (raw.get("title") or "").lower()
+    found = [name for name, pattern in KNOWN_CITIES.items() if re.search(pattern, title)]
+    return found[0] if len(found) == 1 else None
+
+
 def load_refinements() -> dict[str, dict]:
     """Правки от scripts/refine_locations.py, если их уже сделали.
 
@@ -111,9 +135,13 @@ def main() -> int:
                 # места, а не всей подборки.
                 "subcategory": (fix.get("subcategory")
                                 or (raw.get("category") or "").strip() or None),
-                "city": (raw.get("city") or "").strip() or None,
+                # Город: модель видела и адрес места, и текст поста, поэтому
+                # её ответ важнее — она разводит подборки, где адрес одного
+                # места соседствует с упоминанием города другого.
+                "city": fix.get("city") or city_of(raw),
                 "title": fix.get("title") or title_of(raw),
                 "summary": fix.get("summary") or summary_of(raw, shared_post),
+                "details": db.dumps(fix.get("details")) if fix.get("details") else None,
                 "map_url": raw.get("mapUrl"),
                 "photo": raw.get("photo"),
                 "source_url": raw.get("source"),

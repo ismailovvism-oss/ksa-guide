@@ -355,6 +355,9 @@ function cardHtml(item) {
   // и так про него. Место освобождается под район, который различает карточки.
   const place = [item.subcategory, state.city ? item.district : item.city].filter(Boolean);
   const price = formatPrice(item);
+  // «Зачем сюда» — строка, написанная как раз для беглого просмотра;
+  // если её нет, показываем начало описания.
+  const text = item.details?.purpose || item.summary;
   const media = item.photo
     ? `<img src="${escape(item.photo)}" alt="" loading="lazy" decoding="async">`
     : `<div class="card__placeholder">${escape((item.title || '·').trim()[0] || '·')}</div>`;
@@ -373,7 +376,7 @@ function cardHtml(item) {
           ).join('')}
         </div>` : ''}
         <h2 class="card__title">${escape(item.title)}</h2>
-        ${item.summary ? `<p class="card__text">${escape(item.summary)}</p>` : ''}
+        ${text ? `<p class="card__text">${escape(text)}</p>` : ''}
         <div class="card__foot">
           <span>${escape(price || item.categoryTitle)}</span>
           <span>${escape(freshnessFor(item))}</span>
@@ -463,7 +466,14 @@ async function refresh() {
 // --- карточка ---------------------------------------------------------------
 
 function detailHtml(item) {
+  // Пустых полей в details нет: их отсутствие означает «в посте об этом не
+  // сказано». Придуманные часы работы хуже отсутствующих.
+  const extra = item.details || {};
   const facts = [
+    extra.hours && { label: 'Часы работы', value: extra.hours },
+    extra.price && { label: 'Стоимость', value: extra.price },
+    extra.audience && { label: 'Для кого', value: extra.audience },
+    extra.landmark && { label: 'Ориентир', value: extra.landmark },
     item.rooms && { label: 'Комнат', value: item.rooms },
     item.area_sqm && { label: 'Площадь', value: `${item.area_sqm} м²` },
     item.city && { label: 'Город', value: item.city },
@@ -496,8 +506,12 @@ function detailHtml(item) {
         ${place.map((part) => `<span class="card__dot">·</span><span>${escape(part)}</span>`).join('')}
       </div>
       <h2 class="detail__title" id="panel-title">${escape(item.title)}</h2>
+      ${extra.purpose ? `<p class="detail__purpose">${escape(extra.purpose)}</p>` : ''}
       ${price ? `<div class="detail__price">${escape(price)}</div>` : ''}
       ${item.summary ? `<p class="detail__text">${escape(item.summary)}</p>` : ''}
+
+      ${extra.features?.length ? `<ul class="features">${extra.features
+        .map((feature) => `<li>${escape(feature)}</li>`).join('')}</ul>` : ''}
 
       ${facts.length ? `<dl class="facts">${facts.map((fact) => `
         <div class="fact"><dt>${escape(fact.label)}</dt><dd>${escape(fact.value)}</dd></div>

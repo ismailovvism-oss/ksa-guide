@@ -516,6 +516,27 @@ a { color: inherit; }
   letter-spacing: -.01em;
 }
 
+/* «Зачем сюда» — одна строка пользы, поэтому стоит сразу под названием
+   и набрана крупнее описания. */
+.detail__purpose {
+  margin: 0 0 .9rem;
+  font-size: 1rem; color: var(--accent); font-weight: 500;
+}
+
+.features {
+  margin: 0 0 1.3rem; padding: 0; list-style: none;
+  display: grid; gap: .5rem;
+}
+.features li {
+  position: relative; padding-left: 1.15rem;
+  font-size: .9rem; color: var(--ink-2); line-height: 1.5;
+}
+.features li::before {
+  content: ''; position: absolute; left: 0; top: .6rem;
+  width: 5px; height: 5px; border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
 .detail__price {
   font-size: 1.15rem; font-weight: 600; color: var(--ink);
   font-variant-numeric: tabular-nums;

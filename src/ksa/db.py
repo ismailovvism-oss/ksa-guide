@@ -34,13 +34,27 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
 
 
 def migrate(conn: sqlite3.Connection) -> None:
-    """Прогоняет все .sql из migrations/ по порядку имён.
+    """Прогоняет .sql из migrations/ по порядку имён, каждую по одному разу.
 
-    Миграции написаны идемпотентно (CREATE TABLE IF NOT EXISTS), поэтому
-    отдельная таблица версий пока не нужна.
+    Учёт нужен с тех пор, как появились ALTER TABLE: повторный ADD COLUMN
+    падает, идемпотентной формы у него в SQLite нет.
     """
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS schema_migration (
+               name       TEXT PRIMARY KEY,
+               applied_at TEXT NOT NULL
+           )"""
+    )
+    applied = {row["name"] for row in conn.execute("SELECT name FROM schema_migration")}
+
     for path in sorted(config.MIGRATIONS_DIR.glob("*.sql")):
+        if path.name in applied:
+            continue
         conn.executescript(path.read_text(encoding="utf-8"))
+        conn.execute(
+            "INSERT INTO schema_migration (name, applied_at) VALUES (?, ?)",
+            (path.name, utcnow()),
+        )
 
 
 @contextmanager
