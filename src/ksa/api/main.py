@@ -57,44 +57,92 @@ def serialize(row: sqlite3.Row) -> dict[str, Any]:
     return item
 
 
+def _category_clause(category: str | None) -> tuple[str, dict[str, Any]]:
+    """Условие по разделу.
+
+    Без раздела показываем объявления и НЕ показываем локации: справочник
+    в первую очередь про объявления, а места — отдельный раздел.
+    """
+    if category == categories.LOCATION:
+        return "l.category = :category", {"category": categories.LOCATION}
+    if category:
+        return "l.category = :category", {"category": category}
+    return "l.category != :location", {"location": categories.LOCATION}
+
+
 @app.get("/api/facets")
-def facets(category: str | None = None) -> dict[str, Any]:
-    """Счётчики для навигации: сколько всего в каждой категории, городе, типе."""
+def facets(city: str | None = None, category: str | None = None) -> dict[str, Any]:
+    """Счётчики для навигации, посчитанные в рамках выбранного города.
+
+    Город — не фильтр наравне с прочими, а контекст: человек ищет жильё
+    в своём городе, а не сравнивает районы Джидды с районами Медины.
+    Поэтому всё, кроме списка самих городов, считается уже внутри него.
+    """
     conn = db()
     try:
-        by_category = rows(
-            conn,
-            """SELECT category AS key, COUNT(*) AS count FROM listing
-                WHERE status = 'published' GROUP BY category""",
-        )
-        scope = "AND category = ?" if category else ""
-        params = (category,) if category else ()
+        city_clause = "AND l.city = :city" if city else ""
+        city_param: dict[str, Any] = {"city": city} if city else {}
+
+        # Разделы — в рамках города, чтобы во вкладках стояли честные числа.
+        by_category = {
+            row["key"]: row["count"]
+            for row in rows(
+                conn,
+                f"""SELECT l.category AS key, COUNT(*) AS count FROM listing l
+                     WHERE l.status = 'published' {city_clause}
+                     GROUP BY l.category""",
+                city_param,
+            )
+        }
+
+        # Города перечисляем ВСЕ, какие есть в справочнике, а считаем — в рамках
+        # раздела. Иначе на пустом разделе переключатель окажется пустым и город
+        # станет невозможно выбрать, хотя он — глобальный контекст, а не фильтр.
+        clause, params = _category_clause(category)
         by_city = rows(
             conn,
-            f"""SELECT city AS key, COUNT(*) AS count FROM listing
-                 WHERE status = 'published' AND city IS NOT NULL {scope}
-                 GROUP BY city ORDER BY count DESC""",
+            f"""SELECT known.city AS key,
+                       (SELECT COUNT(*) FROM listing l
+                         WHERE l.status = 'published' AND l.city = known.city
+                           AND {clause}) AS count
+                  FROM (SELECT DISTINCT city FROM listing
+                         WHERE status = 'published' AND city IS NOT NULL) known
+                 ORDER BY count DESC, known.city""",
             params,
         )
+
+        # Типы и районы — самый узкий уровень: и город, и раздел.
+        narrow = {**params, **city_param}
         by_subcategory = rows(
             conn,
-            f"""SELECT subcategory AS key, COUNT(*) AS count FROM listing
-                 WHERE status = 'published' AND subcategory IS NOT NULL {scope}
-                 GROUP BY subcategory ORDER BY count DESC""",
-            params,
+            f"""SELECT l.subcategory AS key, COUNT(*) AS count FROM listing l
+                 WHERE l.status = 'published' AND l.subcategory IS NOT NULL
+                   AND {clause} {city_clause}
+                 GROUP BY l.subcategory ORDER BY count DESC""",
+            narrow,
         )
+        by_district = rows(
+            conn,
+            f"""SELECT l.district AS key, COUNT(*) AS count FROM listing l
+                 WHERE l.status = 'published' AND l.district IS NOT NULL
+                   AND {clause} {city_clause}
+                 GROUP BY l.district ORDER BY count DESC""",
+            narrow,
+        )
+
+        ads_total = sum(count for slug, count in by_category.items() if slug != categories.LOCATION)
         return {
+            # Вкладки: только непустые разделы, в осмысленном порядке.
             "categories": [
-                {
-                    "slug": row["key"],
-                    "title": categories.title(row["key"]),
-                    "count": row["count"],
-                }
-                for row in by_category
+                {"slug": slug, "title": categories.title(slug), "count": by_category[slug]}
+                for slug in categories.ADS
+                if by_category.get(slug)
             ],
             "cities": [dict(row) for row in by_city],
             "subcategories": [dict(row) for row in by_subcategory],
-            "total": sum(row["count"] for row in by_category),
+            "districts": [dict(row) for row in by_district],
+            "adsTotal": ads_total,
+            "locationsTotal": by_category.get(categories.LOCATION, 0),
         }
     finally:
         conn.close()
@@ -105,18 +153,22 @@ def listings(
     category: str | None = None,
     city: str | None = None,
     subcategory: str | None = None,
+    district: str | None = None,
     q: str | None = Query(None, description="поиск по названию и описанию"),
     limit: int = Query(48, le=200),
     offset: int = 0,
 ) -> dict[str, Any]:
     conn = db()
     try:
-        where = ["l.status = 'published'"]
-        params: dict[str, Any] = {"now": utcnow(), "limit": limit, "offset": offset}
+        clause, category_params = _category_clause(category)
+        where = ["l.status = 'published'", clause]
+        params: dict[str, Any] = {
+            "now": utcnow(), "limit": limit, "offset": offset, **category_params
+        }
 
-        if category:
-            where.append("l.category = :category")
-            params["category"] = category
+        if district:
+            where.append("l.district = :district")
+            params["district"] = district
         if city:
             where.append("l.city = :city")
             params["city"] = city
@@ -130,9 +182,9 @@ def listings(
             )
             params["q"] = f"%{q.strip()}%"
 
-        clause = " AND ".join(where)
+        sql_where = " AND ".join(where)
         total = conn.execute(
-            f"SELECT COUNT(*) FROM listing l WHERE {clause}",
+            f"SELECT COUNT(*) FROM listing l WHERE {sql_where}",
             {k: v for k, v in params.items() if k not in {"limit", "offset", "now"}},
         ).fetchone()[0]
 
@@ -140,7 +192,7 @@ def listings(
             conn,
             f"""SELECT {LISTING_FIELDS}, {PROMOTION_RANK} AS promotion_rank
                   FROM listing l
-                 WHERE {clause}
+                 WHERE {sql_where}
                  ORDER BY promotion_rank DESC,
                           l.last_seen_at DESC,
                           (l.photo IS NULL),

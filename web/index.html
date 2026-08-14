@@ -29,29 +29,45 @@
       </span>
     </a>
 
+    <!-- Город — не фильтр, а контекст поиска: выбирается один раз и держится
+         дальше, поэтому живёт в шапке, а не в общем ряду чипов. -->
+    <div class="city">
+      <button type="button" class="city__button" id="city-button"
+              aria-haspopup="listbox" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z"/>
+          <circle cx="12" cy="10" r="2.6"/>
+        </svg>
+        <span id="city-current">Все города</span>
+        <span class="city__caret" aria-hidden="true">▾</span>
+      </button>
+      <div class="city__menu" id="city-menu" role="listbox" hidden></div>
+    </div>
+
     <form class="search" role="search" onsubmit="return false">
       <svg class="search__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
            stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
         <circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/>
       </svg>
       <input id="search" type="search" autocomplete="off"
-             placeholder="Найти место, район, услугу…" aria-label="Поиск по справочнику">
+             placeholder="Что ищете?" aria-label="Поиск по справочнику">
       <button type="button" id="search-clear" class="search__clear" hidden aria-label="Очистить поиск">✕</button>
     </form>
   </div>
 
-  <nav class="rail" id="categories" aria-label="Категории"></nav>
+  <nav class="rail" id="categories" aria-label="Разделы"></nav>
 </header>
 
 <main class="page">
   <div class="filters" id="filters" hidden>
-    <div class="filters__group" id="cities-group" hidden>
-      <span class="filters__label">Город</span>
-      <div class="chips" id="cities"></div>
-    </div>
     <div class="filters__group" id="subcategories-group" hidden>
-      <span class="filters__label">Тип</span>
+      <span class="filters__label" id="subcategories-label">Тип</span>
       <div class="chips" id="subcategories"></div>
+    </div>
+    <div class="filters__group" id="districts-group" hidden>
+      <span class="filters__label">Район</span>
+      <div class="chips" id="districts"></div>
     </div>
   </div>
 
@@ -66,10 +82,7 @@
     <button type="button" id="more" class="button" hidden>Показать ещё</button>
   </div>
 
-  <p class="empty" id="empty" hidden>
-    <strong>Ничего не нашлось.</strong>
-    Попробуйте другой запрос или снимите часть фильтров.
-  </p>
+  <div class="empty" id="empty" hidden></div>
 </main>
 
 <footer class="footer">

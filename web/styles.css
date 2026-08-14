@@ -120,8 +120,56 @@ a { color: inherit; }
   color: var(--ink-3);
 }
 
+/* --- выбор города ---------------------------------------------------------
+   Город — контекст поиска, поэтому он стоит рядом с названием, а не в общем
+   ряду фильтров, и остаётся на виду при любом разделе. */
+
+.city { position: relative; flex-shrink: 0; }
+
+.city__button {
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .5rem .8rem;
+  font: inherit; font-size: .9rem; font-weight: 500;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.city__button svg { width: 16px; height: 16px; color: var(--ink-3); }
+.city__button:hover { border-color: var(--ink-3); }
+.city__button--chosen {
+  background: var(--accent-bg);
+  border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+  color: var(--accent);
+}
+.city__button--chosen svg { color: var(--accent); }
+.city__caret { font-size: .65rem; opacity: .6; }
+
+.city__menu {
+  position: absolute; top: calc(100% + .45rem); left: 0; z-index: 40;
+  min-width: 230px; max-height: 60vh; overflow-y: auto;
+  padding: .3rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.city__option {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  width: 100%; padding: .48rem .6rem;
+  font: inherit; font-size: .88rem; text-align: left;
+  color: var(--ink); background: none; border: 0;
+  border-radius: var(--radius-sm); cursor: pointer;
+}
+.city__option:hover { background: var(--surface-2); }
+.city__option[aria-selected="true"] { color: var(--accent); font-weight: 600; }
+.city__count { font-size: .78rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
 .search {
-  position: relative; flex: 1; max-width: 480px; margin-left: auto;
+  position: relative; flex: 1; max-width: 420px; margin-left: auto;
   display: flex; align-items: center;
 }
 .search__icon {
@@ -184,6 +232,16 @@ a { color: inherit; }
 }
 .tab__count { font-size: .74rem; opacity: .62; font-variant-numeric: tabular-nums; }
 
+/* Локации — не очередная категория объявлений, а отдельный раздел
+   с другими правилами. Черта проговаривает это глазу. */
+.rail__divider {
+  flex-shrink: 0; align-self: center;
+  width: 1px; height: 18px; margin: 0 .5rem;
+  background: var(--line);
+}
+.tab--aside { color: var(--ink-3); }
+.tab--aside[aria-selected="true"] { color: #fff; }
+
 /* --- фильтры ------------------------------------------------------------- */
 
 .page {
@@ -221,6 +279,9 @@ a { color: inherit; }
   font-weight: 500;
 }
 .chip__count { font-size: .72rem; opacity: .6; font-variant-numeric: tabular-nums; }
+
+.chip--more { color: var(--accent); border-style: dashed; }
+.chip--more:hover { color: var(--accent); border-color: var(--accent); }
 
 .summary {
   display: flex; align-items: center; justify-content: space-between; gap: 1rem;
@@ -359,10 +420,15 @@ a { color: inherit; }
 /* --- пусто / ещё --------------------------------------------------------- */
 
 .empty {
-  margin: 3.5rem auto; max-width: 30rem; text-align: center;
+  margin: 3.5rem auto; max-width: 32rem; text-align: center;
   color: var(--ink-2); line-height: 1.6;
 }
-.empty strong { display: block; font-family: var(--serif); font-size: 1.1rem; color: var(--ink); }
+.empty strong {
+  display: block; margin-bottom: .3rem;
+  font-family: var(--serif); font-size: 1.2rem; color: var(--ink);
+}
+.empty p { margin: 0; }
+.empty .button { margin-top: 1.2rem; }
 
 .loadmore { display: flex; justify-content: center; margin-top: 2rem; }
 

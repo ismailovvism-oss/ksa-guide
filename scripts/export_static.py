@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from ksa import config, db  # noqa: E402
+from ksa import categories, config, db  # noqa: E402
 from ksa.api.main import LISTING_FIELDS, PROMOTION_RANK, serialize  # noqa: E402
 
 DIST = ROOT / "docs"
@@ -95,8 +95,11 @@ def main() -> int:
         shutil.rmtree(DIST)
     (DIST / "data").mkdir(parents=True)
 
+    # Порядок разделов кладём рядом с данными, а не дублируем в JS:
+    # иначе он разъедется, как только в categories.py поменяется список.
+    bundle = {"ads": categories.ADS, "items": items}
     (DIST / "data" / "listings.json").write_text(
-        json.dumps(items, ensure_ascii=False, separators=(",", ":")),
+        json.dumps(bundle, ensure_ascii=False, separators=(",", ":")),
         encoding="utf-8",
     )
     shutil.copy2(WEB / "styles.css", DIST / "styles.css")
