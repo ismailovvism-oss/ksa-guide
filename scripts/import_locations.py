@@ -143,7 +143,10 @@ def main() -> int:
                 "summary": fix.get("summary") or summary_of(raw, shared_post),
                 "details": db.dumps(fix.get("details")) if fix.get("details") else None,
                 "map_url": raw.get("mapUrl"),
-                "photo": raw.get("photo"),
+                # no_photo — на снимке автор канала или другие узнаваемые люди.
+                # Файл остаётся в data/photos, но в справочник не попадает:
+                # публиковать чужое лицо мы права не имеем.
+                "photo": None if fix.get("no_photo") else raw.get("photo"),
                 "source_url": raw.get("source"),
                 # skip — запись не является местом: в выгрузку попала первая
                 # строка поста или обрывок адреса. Не удаляем, а снимаем
