@@ -145,7 +145,10 @@ def main() -> int:
                 "map_url": raw.get("mapUrl"),
                 "photo": raw.get("photo"),
                 "source_url": raw.get("source"),
-                "status": "published",
+                # skip — запись не является местом: в выгрузку попала первая
+                # строка поста или обрывок адреса. Не удаляем, а снимаем
+                # с публикации: исходная запись остаётся на месте.
+                "status": "rejected" if fix.get("skip") else "published",
                 "updated_at": now,
             }
 
