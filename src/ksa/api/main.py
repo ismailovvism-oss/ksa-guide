@@ -43,7 +43,7 @@ LISTING_FIELDS = """
     l.id, l.category, l.subcategory, l.city, l.district, l.title, l.summary,
     l.price_amount, l.price_currency, l.price_period, l.rooms, l.area_sqm,
     l.contacts, l.photo, l.map_url, l.source_url, l.last_seen_at,
-    l.first_seen_at, l.repost_count, l.details
+    l.first_seen_at, l.repost_count, l.details, l.photos
 """
 
 
@@ -53,8 +53,11 @@ def serialize(row: sqlite3.Row) -> dict[str, Any]:
     item["details"] = loads(item.get("details"), {}) or {}
     item["categoryTitle"] = categories.title(item["category"])
     item["promoted"] = bool(item.pop("promotion_rank", 0))
-    if item.get("photo"):
-        item["photo"] = config.media_url(item["photo"])
+    # Обложка и полный набор: карточка в выдаче показывает первую,
+    # панель — все.
+    gallery = loads(item.get("photos"), []) or ([item["photo"]] if item.get("photo") else [])
+    item["photos"] = [config.media_url(path) for path in gallery]
+    item["photo"] = config.media_url(item["photo"]) if item.get("photo") else None
     return item
 
 

@@ -147,6 +147,10 @@ def main() -> int:
                 # Файл остаётся в data/photos, но в справочник не попадает:
                 # публиковать чужое лицо мы права не имеем.
                 "photo": None if fix.get("no_photo") else raw.get("photo"),
+                # У локации из выгрузки снимок один; набор пополняется, когда
+                # то же место придёт из другого канала.
+                "photos": (None if fix.get("no_photo") or not raw.get("photo")
+                           else db.dumps([raw["photo"]])),
                 "source_url": raw.get("source"),
                 # skip — запись не является местом: в выгрузку попала первая
                 # строка поста или обрывок адреса. Не удаляем, а снимаем

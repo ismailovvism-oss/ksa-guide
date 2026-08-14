@@ -131,6 +131,24 @@ def attach(
         ),
     }
 
+    # Фотография перепоста — не мусор, а ещё один ракурс того же места.
+    # Раньше она терялась; теперь карточка собирает снимки из всех каналов
+    # и оказывается полнее любого исходного поста.
+    media = one(
+        conn,
+        """SELECT r.media_path AS media_path FROM listing_occurrence o
+             JOIN raw_message r ON r.id = o.raw_message_id
+            WHERE o.id = ?""",
+        (occurrence_id,),
+    )
+    if media and media["media_path"]:
+        gallery = loads(listing["photos"], []) or []
+        if media["media_path"] not in gallery:
+            gallery.append(media["media_path"])
+            changes["photos"] = dumps(gallery)
+            if not listing["photo"]:
+                changes["photo"] = media["media_path"]
+
     # Недостающие поля добираем из любого вхождения, где они есть.
     for field in ("city", "district", "price_amount", "price_currency",
                   "price_period", "rooms", "area_sqm"):
@@ -175,6 +193,7 @@ def create(
             "contacts": dumps(item.contacts),
             "identity_key": identity_key(item),
             "photo": photo,
+            "photos": dumps([photo]) if photo else None,
             "first_seen_at": posted_at,
             "last_seen_at": posted_at,
             "repost_count": 1,

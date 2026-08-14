@@ -497,9 +497,19 @@ function detailHtml(item) {
   const price = formatPrice(item);
   const place = [item.subcategory, item.city].filter(Boolean);
 
+  // Одно объявление приходит из нескольких каналов, и у каждого перепоста
+  // своё фото. Показываем все: карточка получается полнее исходного поста.
+  const gallery = item.photos?.length ? item.photos : (item.photo ? [item.photo] : []);
+
   return `
-    ${item.photo ? `<div class="detail__media">
-        <img src="${escape(item.photo)}" alt=""></div>` : ''}
+    ${gallery.length ? `<div class="detail__media">
+        <img src="${escape(gallery[0])}" alt="" id="detail-photo">
+        ${gallery.length > 1 ? `<div class="thumbs">${gallery.map((src, i) => `
+          <button type="button" class="thumb" aria-pressed="${i === 0}"
+                  data-photo="${escape(src)}">
+            <img src="${escape(src)}" alt="" loading="lazy">
+          </button>`).join('')}</div>` : ''}
+      </div>` : ''}
     <div class="detail__body">
       <div class="detail__meta">
         <b>${escape(item.categoryTitle)}</b>
@@ -660,7 +670,13 @@ el.searchClear.addEventListener('click', () => {
 });
 
 el.panel.addEventListener('click', (event) => {
-  if (event.target.closest('[data-close]')) closeDetail();
+  if (event.target.closest('[data-close]')) return closeDetail();
+
+  const thumb = event.target.closest('[data-photo]');
+  if (!thumb) return;
+  document.getElementById('detail-photo').src = thumb.dataset.photo;
+  el.panel.querySelectorAll('.thumb').forEach((node) =>
+    node.setAttribute('aria-pressed', String(node === thumb)));
 });
 
 document.addEventListener('keydown', (event) => {

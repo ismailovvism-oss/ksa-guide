@@ -125,3 +125,34 @@ def test_more_trusted_channel_supplies_the_card_text(conn):
         (card["canonical_occurrence_id"],),
     )
     assert canonical["username"] == "good_channel"
+
+
+def test_reposts_bring_their_own_photos_into_one_gallery(conn):
+    """Ради этого и заводилась галерея: карточка полнее любого исходного поста."""
+    first = add_channel(conn, "ksa_arenda")
+    second = add_channel(conn, "medina_chat")
+
+    one = add_message(conn, first, 1, FLAT_ORIGINAL, "2026-08-01T09:00:00+00:00")
+    two = add_message(conn, second, 1, FLAT_REPOST, "2026-08-03T09:00:00+00:00")
+    db.update(conn, "raw_message", one, {"media_path": "media/a.jpg"})
+    db.update(conn, "raw_message", two, {"media_path": "media/b.jpg"})
+
+    run(conn, use_model=False)
+
+    cards = listings(conn)
+    assert len(cards) == 1
+    gallery = db.loads(cards[0]["photos"], [])
+    assert gallery == ["media/a.jpg", "media/b.jpg"]
+    # Обложка — снимок из первого поста, он же попадёт в плитку выдачи.
+    assert cards[0]["photo"] == "media/a.jpg"
+
+
+def test_the_same_photo_is_not_added_twice(conn):
+    channel = add_channel(conn, "ksa_arenda")
+    one = add_message(conn, channel, 1, FLAT_ORIGINAL, "2026-08-01T09:00:00+00:00")
+    two = add_message(conn, channel, 2, FLAT_REPOST, "2026-08-02T09:00:00+00:00")
+    for raw_id in (one, two):
+        db.update(conn, "raw_message", raw_id, {"media_path": "media/same.jpg"})
+
+    run(conn, use_model=False)
+    assert db.loads(listings(conn)[0]["photos"], []) == ["media/same.jpg"]
