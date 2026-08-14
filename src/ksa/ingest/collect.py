@@ -11,7 +11,7 @@ import sqlite3
 from pathlib import Path
 
 from .. import config
-from ..db import insert, one, update, utcnow
+from ..db import dumps, insert, one, update, utcnow
 from ..dedup.phash import phash
 
 # Сколько сообщений тянуть за один проход по каналу при первом сборе.
@@ -70,10 +70,52 @@ async def _save_media(client, message, message_id: str) -> tuple[str | None, str
     return f"media/{target.name}", phash(target)
 
 
+def _flush_album(conn: sqlite3.Connection, channel_id: int, album: list[dict]) -> bool:
+    """Пишет альбом одной записью. Возвращает True, если запись создана.
+
+    В Telegram альбом — это несколько сообщений с общим grouped_id, и подпись
+    есть только у одного из них. Поэтому текст берём оттуда, где он есть,
+    а снимки собираем со всех.
+    """
+    if not album:
+        return False
+
+    with_text = next((m for m in album if m["text"].strip()), album[0])
+    paths = [m["media_path"] for m in album if m["media_path"]]
+    if not with_text["text"].strip() and not paths:
+        return False
+
+    try:
+        insert(
+            conn,
+            "raw_message",
+            {
+                "channel_id": channel_id,
+                # Идентификатор поста — сообщение с подписью: на него ведёт
+                # ссылка «источник» на карточке.
+                "tg_msg_id": with_text["id"],
+                "grouped_id": with_text["grouped_id"],
+                "posted_at": with_text["posted_at"],
+                "edited_at": with_text["edited_at"],
+                "text": with_text["text"],
+                # Обложка — первый снимок: по ней считается хеш для дедупа.
+                "media_path": paths[0] if paths else None,
+                "media_phash": next(
+                    (m["phash"] for m in album if m["media_path"] and m["phash"]), None
+                ),
+                "media_paths": dumps(paths) if paths else None,
+                "fetched_at": utcnow(),
+            },
+        )
+        return True
+    except sqlite3.IntegrityError:
+        return False  # пост уже забирали в прошлый раз
+
+
 async def collect_channel(
     client, conn: sqlite3.Connection, username: str, limit: int | None = None
 ) -> int:
-    """Докачивает новые сообщения канала. Возвращает число сохранённых."""
+    """Докачивает новые сообщения канала. Возвращает число сохранённых постов."""
     channel_id = ensure_channel(conn, username)
     row = one(conn, "SELECT * FROM channel WHERE id = ?", (channel_id,))
     last_msg_id = row["last_msg_id"] if row else 0
@@ -84,8 +126,11 @@ async def collect_channel(
 
     saved = 0
     highest = last_msg_id
+    album: list[dict] = []
+
     # reverse=True — от старых к новым, чтобы курсор двигался монотонно
-    # и обрыв связи не оставлял дыр в архиве.
+    # и обрыв связи не оставлял дыр в архиве. Заодно сообщения одного
+    # альбома идут подряд, и их достаточно копить в буфере.
     async for message in client.iter_messages(
         entity,
         min_id=last_msg_id,
@@ -96,31 +141,33 @@ async def collect_channel(
         if not text and not message.photo:
             continue
 
-        media_key = f"{username}_{message.id}"
-        media_path, media_phash = await _save_media(client, message, media_key)
+        # Кончился предыдущий альбом — записываем его и начинаем новый.
+        if album and message.grouped_id != album[0]["grouped_id"]:
+            saved += _flush_album(conn, channel_id, album)
+            album = []
 
-        try:
-            insert(
-                conn,
-                "raw_message",
-                {
-                    "channel_id": channel_id,
-                    "tg_msg_id": message.id,
-                    "grouped_id": message.grouped_id,
-                    "posted_at": message.date.replace(microsecond=0).isoformat(),
-                    "edited_at": message.edit_date.isoformat() if message.edit_date else None,
-                    "text": text,
-                    "media_path": media_path,
-                    "media_phash": media_phash,
-                    "fetched_at": utcnow(),
-                },
-            )
-            saved += 1
-        except sqlite3.IntegrityError:
-            pass  # сообщение уже забрали в прошлый раз
+        media_path, media_phash = await _save_media(
+            client, message, f"{username}_{message.id}"
+        )
+        album.append(
+            {
+                "id": message.id,
+                "grouped_id": message.grouped_id,
+                "posted_at": message.date.replace(microsecond=0).isoformat(),
+                "edited_at": message.edit_date.isoformat() if message.edit_date else None,
+                "text": text,
+                "media_path": media_path,
+                "phash": media_phash,
+            }
+        )
+        # Одиночное сообщение — тот же альбом длиной в один снимок.
+        if message.grouped_id is None:
+            saved += _flush_album(conn, channel_id, album)
+            album = []
 
         highest = max(highest, message.id)
 
+    saved += _flush_album(conn, channel_id, album)
     update(conn, "channel", channel_id, {"last_msg_id": highest})
     return saved
 

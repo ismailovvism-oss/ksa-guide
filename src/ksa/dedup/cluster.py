@@ -92,6 +92,17 @@ def best_match(
     return best_row, best
 
 
+def _photos_of(row: sqlite3.Row | None) -> list[str]:
+    """Снимки поста: весь альбом, а если его нет — одна обложка."""
+    if row is None:
+        return []
+    keys = row.keys()
+    paths = loads(row["media_paths"], []) if "media_paths" in keys else []
+    if paths:
+        return paths
+    return [row["media_path"]] if row["media_path"] else []
+
+
 def _merge_contacts(existing: list[dict], incoming: list[dict]) -> list[dict]:
     seen = {f"{c['type']}:{c['value']}" for c in existing}
     return existing + [
@@ -136,18 +147,20 @@ def attach(
     # и оказывается полнее любого исходного поста.
     media = one(
         conn,
-        """SELECT r.media_path AS media_path FROM listing_occurrence o
+        """SELECT r.media_path AS media_path, r.media_paths AS media_paths
+             FROM listing_occurrence o
              JOIN raw_message r ON r.id = o.raw_message_id
             WHERE o.id = ?""",
         (occurrence_id,),
     )
-    if media and media["media_path"]:
+    incoming = _photos_of(media)
+    if incoming:
         gallery = loads(listing["photos"], []) or []
-        if media["media_path"] not in gallery:
-            gallery.append(media["media_path"])
-            changes["photos"] = dumps(gallery)
+        fresh = [path for path in incoming if path not in gallery]
+        if fresh:
+            changes["photos"] = dumps(gallery + fresh)
             if not listing["photo"]:
-                changes["photo"] = media["media_path"]
+                changes["photo"] = fresh[0]
 
     # Недостающие поля добираем из любого вхождения, где они есть.
     for field in ("city", "district", "price_amount", "price_currency",
@@ -172,7 +185,8 @@ def attach(
 
 
 def create(
-    conn: sqlite3.Connection, occurrence_id: int, item: Item, posted_at: str, photo: str | None
+    conn: sqlite3.Connection, occurrence_id: int, item: Item, posted_at: str,
+    photos: list[str]
 ) -> int:
     occurrence = one(conn, "SELECT * FROM listing_occurrence WHERE id = ?", (occurrence_id,))
     now = utcnow()
@@ -192,8 +206,8 @@ def create(
             "area_sqm": item.area_sqm,
             "contacts": dumps(item.contacts),
             "identity_key": identity_key(item),
-            "photo": photo,
-            "photos": dumps([photo]) if photo else None,
+            "photo": photos[0] if photos else None,
+            "photos": dumps(photos) if photos else None,
             "first_seen_at": posted_at,
             "last_seen_at": posted_at,
             "repost_count": 1,
@@ -214,8 +228,8 @@ def assign(conn: sqlite3.Connection, occurrence_id: int) -> tuple[int, Match | N
     row = one(
         conn,
         """SELECT o.*, r.posted_at AS posted_at, r.media_phash AS media_phash,
-                  r.media_path AS media_path, r.channel_id AS channel_id,
-                  c.trust AS trust
+                  r.media_path AS media_path, r.media_paths AS media_paths,
+                  r.channel_id AS channel_id, c.trust AS trust
              FROM listing_occurrence o
              JOIN raw_message r ON r.id = o.raw_message_id
              JOIN channel c ON c.id = r.channel_id
@@ -241,7 +255,7 @@ def assign(conn: sqlite3.Connection, occurrence_id: int) -> tuple[int, Match | N
             attach(conn, occurrence_id, best_row["id"], row["posted_at"], row["trust"])
             return best_row["id"], match
 
-    listing_id = create(conn, occurrence_id, item, row["posted_at"], row["media_path"])
+    listing_id = create(conn, occurrence_id, item, row["posted_at"], _photos_of(row))
 
     # Похоже, но не настолько, чтобы решать без человека: карточку всё же
     # заводим (иначе объявление пропадёт из выдачи), но помечаем на проверку.

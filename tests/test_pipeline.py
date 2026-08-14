@@ -156,3 +156,19 @@ def test_the_same_photo_is_not_added_twice(conn):
 
     run(conn, use_model=False)
     assert db.loads(listings(conn)[0]["photos"], []) == ["media/same.jpg"]
+
+
+def test_album_photos_all_land_on_the_card(conn):
+    """Пост-альбом даёт карточке все снимки, а не только обложку."""
+    channel = add_channel(conn, "ksa_arenda")
+    raw = add_message(conn, channel, 1, FLAT_ORIGINAL, "2026-08-01T09:00:00+00:00")
+    db.update(conn, "raw_message", raw, {
+        "media_path": "media/a.jpg",
+        "media_paths": db.dumps(["media/a.jpg", "media/b.jpg", "media/c.jpg"]),
+    })
+
+    run(conn, use_model=False)
+    card = listings(conn)[0]
+
+    assert db.loads(card["photos"], []) == ["media/a.jpg", "media/b.jpg", "media/c.jpg"]
+    assert card["photo"] == "media/a.jpg"
