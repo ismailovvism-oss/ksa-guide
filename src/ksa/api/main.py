@@ -53,7 +53,7 @@ def serialize(row: sqlite3.Row) -> dict[str, Any]:
     item["categoryTitle"] = categories.title(item["category"])
     item["promoted"] = bool(item.pop("promotion_rank", 0))
     if item.get("photo"):
-        item["photo"] = f"/media/{item['photo'].split('/', 1)[-1]}"
+        item["photo"] = config.media_url(item["photo"])
     return item
 
 

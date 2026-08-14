@@ -41,15 +41,20 @@ def collect() -> list[dict]:
     items = []
     for row in rows:
         item = serialize(row)
-        # На GitHub Pages сайт живёт не в корне домена, а в /имя-репозитория/,
-        # поэтому все пути должны быть относительными.
-        if item.get("photo"):
+        # Когда картинки на R2, serialize уже вернул абсолютный адрес — трогать
+        # его нельзя. Локальный путь делаем относительным: на GitHub Pages сайт
+        # живёт не в корне домена, а в /имя-репозитория/.
+        if item.get("photo") and not item["photo"].startswith("http"):
             item["photo"] = item["photo"].lstrip("/")
         items.append(item)
     return items
 
 
 def copy_photos(items: list[dict]) -> int:
+    """Кладёт фото рядом с сайтом. Не нужно, когда они уже лежат на R2."""
+    if config.MEDIA_BASE_URL:
+        return 0
+
     target = DIST / "media"
     target.mkdir(parents=True, exist_ok=True)
     sources = (config.DATA_DIR / "photos", config.MEDIA_DIR)
@@ -103,7 +108,8 @@ def main() -> int:
 
     photos = copy_photos(items)
     size = sum(f.stat().st_size for f in DIST.rglob("*") if f.is_file())
-    print(f"docs/ готов: {len(items)} карточек, {photos} фото, {size / 1_048_576:.1f} МБ")
+    where = f"{photos} фото рядом" if photos else f"фото с {config.MEDIA_BASE_URL}"
+    print(f"docs/ готов: {len(items)} карточек, {where}, {size / 1_048_576:.1f} МБ")
     return 0
 
 

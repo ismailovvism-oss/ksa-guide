@@ -32,6 +32,20 @@ TG_SESSION = env("TG_SESSION", str(ROOT / ".secrets" / "ksa.session"))
 
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY")
 
+# Публичная база для картинок (Cloudflare R2). Если задана, карточки ссылаются
+# прямо туда: статическую версию не нужно тащить вместе с мегабайтами фото.
+# Пусто — фото раздаёт сам бэкенд из data/.
+MEDIA_BASE_URL = (env("KSA_MEDIA_BASE_URL") or "").rstrip("/")
+
+
+def media_url(path: str) -> str:
+    """Адрес картинки по её пути в базе («photos/x.jpg» или «media/x.jpg»)."""
+    relative = path.lstrip("/")
+    if MEDIA_BASE_URL:
+        return f"{MEDIA_BASE_URL}/{relative}"
+    # Локально папку не различаем — маршрут /media ищет файл в обеих.
+    return f"/media/{relative.split('/')[-1]}"
+
 
 @dataclass(frozen=True)
 class ChannelConfig:
