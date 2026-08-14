@@ -9,7 +9,9 @@
 
 from __future__ import annotations
 
+import collections
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -30,17 +32,49 @@ def title_of(raw: dict) -> str:
     return title[:120] or "Без названия"
 
 
-def summary_of(raw: dict) -> str | None:
+# Начало перечисления мест: маркер списка, ссылка на карту или значок места
+# посреди строки — так каналы помечают очередной пункт подборки.
+ENUMERATION = re.compile(r"^\s*(?:[•\-–—*]|\d+[.)])\s|maps\.app\.goo\.gl|goo\.gl/maps")
+
+
+def summary_of(raw: dict, shared_post: bool) -> str | None:
+    """Описание карточки.
+
+    Один пост канала описывает до 11 мест сразу, и в выгрузке тело поста
+    целиком попало в каждую запись — карточка выглядела списком других мест.
+    Для таких постов оставляем только вступление: оно про подборку в целом
+    и читается как описание, а перечисление отрезаем.
+
+    Пост про одно место режем только по служебным хвостам — там весь текст
+    и есть описание.
+    """
     body = (raw.get("body") or "").strip()
     if not body:
         return None
-    # Хвост поста — служебные строки «📍 адрес» и «Источник: …», они уже
-    # разложены по отдельным полям карточки.
-    lines = [
-        line for line in body.splitlines()
-        if not line.strip().startswith(("📍", "Источник:"))
-    ]
-    return "\n".join(lines).strip()[:1500] or None
+
+    kept: list[str] = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        # Служебные хвосты: адрес и ссылка на источник уже лежат в своих полях.
+        if stripped.startswith(("📍", "Источник:")):
+            continue
+        if shared_post and (ENUMERATION.search(line) or ("📍" in line and kept)):
+            break
+        kept.append(line)
+
+    return "\n".join(kept).strip()[:1500] or None
+
+
+def load_refinements() -> dict[str, dict]:
+    """Правки от scripts/refine_locations.py, если их уже сделали.
+
+    Хранятся отдельно от locations.json: выгрузка из канала — сырьё, её
+    не переписываем, как и raw_message в основном конвейере.
+    """
+    path = config.DATA_DIR / "locations_refined.json"
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def main() -> int:
@@ -49,11 +83,21 @@ def main() -> int:
         return 1
 
     records = json.loads(SOURCE_FILE.read_text(encoding="utf-8"))
-    added = updated = 0
+    refinements = load_refinements()
+
+    # Сколько мест описано в одном посте: от этого зависит, резать ли
+    # перечисление из описания.
+    per_post = collections.Counter(raw.get("source") for raw in records)
+
+    added = updated = refined = 0
 
     with db.session() as conn, db.transaction(conn):
         for raw in records:
             external_id = raw["id"]
+            shared_post = per_post[raw.get("source")] > 1
+            fix = refinements.get(external_id, {})
+            if fix:
+                refined += 1
             existing = db.one(
                 conn, "SELECT id FROM listing WHERE external_id = ?", (external_id,)
             )
@@ -62,10 +106,14 @@ def main() -> int:
             values = {
                 "category": "location",
                 "external_id": external_id,
-                "subcategory": (raw.get("category") or "").strip() or None,
+                # Правка от модели важнее исходной выгрузки: там человеческое
+                # название вместо арабского адреса и описание именно этого
+                # места, а не всей подборки.
+                "subcategory": (fix.get("subcategory")
+                                or (raw.get("category") or "").strip() or None),
                 "city": (raw.get("city") or "").strip() or None,
-                "title": title_of(raw),
-                "summary": summary_of(raw),
+                "title": fix.get("title") or title_of(raw),
+                "summary": fix.get("summary") or summary_of(raw, shared_post),
                 "map_url": raw.get("mapUrl"),
                 "photo": raw.get("photo"),
                 "source_url": raw.get("source"),
@@ -84,7 +132,11 @@ def main() -> int:
                 )
                 added += 1
 
-    print(f"Локации: добавлено {added}, обновлено {updated}")
+    note = f", с правками модели {refined}" if refined else ""
+    print(f"Локации: добавлено {added}, обновлено {updated}{note}")
+    if not refinements:
+        print("Правок нет — заголовки и описания как в выгрузке канала.")
+        print("Разобрать по местам: uv run python scripts/refine_locations.py")
     return 0
 
 
